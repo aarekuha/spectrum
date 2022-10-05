@@ -1,0 +1,47 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:13.3
+    environment:
+      POSTGRES_DB: "${DB_DATABASE}"
+      POSTGRES_USER: "${DB_USERNAME}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - ./database:/docker-entrypoint-initdb.d
+    ports:
+      - "7432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spectrum -d spectrum"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  parser-app:
+    build:
+      dockerfile: Dockerfile.parser
+    environment:
+      "DB_HOSTNAME": "postgres"
+      "DB_PORT": 5432
+      "AUTH_USERNAME": "${AUTH_USERNAME}"
+      "AUTH_PASSWORD": "${AUTH_PASSWORD}"
+      "DB_DATABASE": "${DB_DATABASE}"
+      "DB_USERNAME": "${DB_USERNAME}"
+      "DB_PASSWORD": "${DB_PASSWORD}"
+      "DEBUG": ${DB_DEBUG}
+    ports:
+      - "8080:8080"
+
+  client-app:
+    build:
+      dockerfile: Dockerfile.client
+    environment:
+      "DB_HOSTNAME": "postgres"
+      "DB_PORT": 5432
+      "DB_DATABASE": "${DB_DATABASE}"
+      "DB_USERNAME": "${DB_USERNAME}"
+      "DB_PASSWORD": "${DB_PASSWORD}"
+      "DEBUG": ${DB_DEBUG}
+    ports:
+      - "8090:8090"
