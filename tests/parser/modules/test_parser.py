@@ -1,11 +1,9 @@
 import pytest
 from asyncio import Queue
-from aiohttp import web
 from aiohttp import ClientSession
+from pytest_mock import MockerFixture
 
 from parser.modules import Parser
-
-pytestmark = pytest.mark.asyncio
 
 HTML_TEMPLATE: str = "<html><body>%s</body></html>"
 TITLE_TEMPLATE: str = "<title>%s</title>"
@@ -22,22 +20,6 @@ def make_html(links_count: int, page_title: str, parent_page: str = "") -> str:
     title: str = TITLE_TEMPLATE % parent_page + page_title
     html: str = HTML_TEMPLATE % (title + links)
     return html
-
-
-async def get_empty_page(_):
-    return web.Response(body="")
-
-
-async def get_start_page(_):
-    return web.Response(body=make_html(links_count=0, page_title="start page"))
-
-
-@pytest.fixture
-def cli(loop, aiohttp_client):
-    app = web.Application()
-    app.router.add_get('https://test.url', get_empty_page)
-    app.router.add_get('https://test.url/40', get_empty_page)
-    return loop.run_until_complete(aiohttp_client(app))
 
 
 def test_get_links_parser(queue: Queue) -> None:
@@ -61,16 +43,26 @@ def test_get_links_parser(queue: Queue) -> None:
     for i in range(5):
         assert start_url + str(i) in links
 
+class MockResponse:
+    def __init__(self, status):
+        self.status = status
 
-async def test_check_site_avail(queue: Queue) -> None:
-    available_url: str = "https://test.url"
-    parser: Parser = Parser(queue=queue, start_url=available_url)
-    async with ClientSession() as session:
-        check_result: bool = await parser.check_site_avail(session=session)
-        assert check_result == True
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
 
-    not_available_url: str = "https://test.url/999"
-    parser: Parser = Parser(queue=queue, start_url=not_available_url)
-    async with ClientSession() as session:
-        check_result: bool = await parser.check_site_avail(session=session)
-        assert check_result == False
+    async def __aenter__(self):
+        return self
+
+
+@pytest.mark.asyncio
+async def test_check_site_avail(queue: Queue, mocker: MockerFixture) -> None:
+    parser: Parser = Parser(queue=queue, start_url="")
+    session: ClientSession = ClientSession()
+
+    mocker.patch('aiohttp.ClientSession.get', return_value=MockResponse(status=200))
+    assert await parser.check_site_avail(session=session) == True
+
+    mocker.patch('aiohttp.ClientSession.get', return_value=MockResponse(status=404))
+    assert await parser.check_site_avail(session=session) == False
+
+    await session.close()
