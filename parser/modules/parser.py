@@ -18,13 +18,14 @@ from aiohttp import ServerDisconnectedError
 
 from models import SiteModel
 
-
 class Parser():
     """ Рекурсивная обработка данных сайта """
     _url_site: str
     _url_start: str
+    _status_store: dict
     _max_depth: int
     _max_concurrent: int
+    _default_timeout_sec: int
     _processed_urls: set[str]
     _client: aiohttp.ClientSession
     _session_timeout: aiohttp.ClientTimeout
@@ -35,6 +36,7 @@ class Parser():
         self,
         queue: Queue,
         start_url: str,
+        status_store: dict,
         max_depth: int = 0,
         max_concurrent: int = 1,
         default_timeout_sec: int = 10
@@ -50,7 +52,10 @@ class Parser():
         self._url_start = start_url
         self._url_site = "://".join(urlparse(start_url)[:2])
         self._url_domain = urlparse(start_url)[1]
+        self._status_store = status_store
         self._max_depth = max_depth
+        self._max_concurrent = max_concurrent
+        self._default_timeout_sec = default_timeout_sec
         self._semaphores = {level: asyncio.Semaphore(max_concurrent) for level in range(max_depth + 1)}
         self._processed_urls = set()
         self._session_timeout = aiohttp.ClientTimeout(
@@ -118,21 +123,17 @@ class Parser():
         async with session.get(self._url_start, allow_redirects=True) as response:
             return response.status == HTTPStatus.OK
 
-    async def _process(self, status_store: dict) -> None:
+    async def _process(self) -> None:
         """ Процесс сбора данных """
         if len(self._url_domain) > 64:
             raise Exception("Domain name too long")
         async with aiohttp.ClientSession(timeout=self._session_timeout) as session:
             await asyncio.create_task(self._fetch(session=session, url=self._url_start, current_depth=0))
-        # Очистка информации о состоянии
-        del status_store[self._url_start]
-        self.logger.info(f"Completed: {self._url_start}...")
-        # После завершения выполнения ссылок не остаётся, экземпляр Parser'а будет удалён GC
+        self._remove_from_store()
 
-    async def start(self, status_store: dict) -> bool:
+    async def start(self) -> bool:
         """
             Запуск фонового процесса сбора данных
-            status_store: хранилище состояний процессов
             Возвращает:
                 - True, если запуск был осуществлен
                 - False, если недоступен стартовый URL
@@ -143,6 +144,26 @@ class Parser():
                 return False
         self.logger.info(f"Started: {self._url_start}...")
         # Запуск фонового процесса обработки
-        asyncio.create_task(self._process(status_store=status_store))
+        self._task = asyncio.create_task(self._process())
         # Уведомление об успехе старта
         return True
+
+    def _remove_from_store(self, message: str = "Completed") -> None:
+        """ Удаление состояния и ссылок на task """
+        # После завершения работы ссылок не остаётся, экземпляр Parser'а будет удалён GC
+        del self._status_store[self._url_start]
+        self.logger.info(f"{message}: {self._url_start}...")
+
+    def cancel(self) -> None:
+        self._task.cancel()
+        self._remove_from_store(message="Cancelled")
+
+    @property
+    def __dict__(self):
+        """ Поле для формирования описания Парсера в OpenAPI """
+        return {
+            "status": "Processing...",
+            "max_depth": self._max_depth,
+            "max_concurrent": self._max_concurrent,
+            "default_timeout_sec": self._default_timeout_sec,
+        }

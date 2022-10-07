@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse
 
 from models import StartSuccessModel
 from models import StartFailedModel
+from models import CancelSuccessModel
+from models import CancelFailedModel
 from modules import Config
 from services import Services
 
@@ -41,7 +43,7 @@ logger: logging.Logger = logging.getLogger("main.py")
 async def health_check():
     return {
         "status": "ok",
-        "parsers": services.parser_service._parsers,
+        "parsers": services.parser_service._status_store,
     }
 
 
@@ -109,6 +111,34 @@ async def start_parse_process(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=StartFailedModel().dict(),
         )
+
+
+@app.patch(path="/cancel",
+    responses={
+        200: {
+            "description": "Задача на сбор остановлена",
+            "model": CancelSuccessModel,
+        },
+        400: {
+            "description": "Задача с указанным стартовым URL не найдена",
+            "model": CancelFailedModel,
+        },
+    },
+    summary="Останов запущенного процесса",
+    dependencies=[Depends(basic_auth)],
+)
+async def cancel_parse_process(
+    start_url: str = Query(
+        description="Стартовый адрес",
+        default="https://habr.com/ru/post/420129/"
+    ),
+) -> JSONResponse:
+    """ Останов запущенного процесса путём указания стартового URL """
+    if not services.parser_service.is_url_processing(start_url):
+        return JSONResponse(status_code=400, content=CancelFailedModel().dict())
+
+    services.parser_service.cancel_by_url(start_url=start_url)
+    return JSONResponse(status_code=200, content=CancelSuccessModel().dict())
 
 
 @app.on_event("startup")

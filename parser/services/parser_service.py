@@ -4,13 +4,21 @@ from .service_base import ServiceBase
 from modules import Parser
 
 class ParserService(ServiceBase):
-    _parsers: dict
     _queue: Queue
+    _status_store: dict[str, Parser]
 
     def __init__(self, queue: Queue):
         super().__init__()
-        self._parsers = {}
+        self._status_store = {}
         self._queue = queue
+
+    def is_url_processing(self, start_url: str) -> bool:
+        """ Поиск запущенного процесса сбора данных по URL """
+        return start_url in self._status_store
+
+    def cancel_by_url(self, start_url: str) -> None:
+        """ Останов задачи по стартовому URL """
+        self._status_store[start_url].cancel()
 
     async def parse_site(
         self,
@@ -26,22 +34,17 @@ class ParserService(ServiceBase):
             max_concurrent: максимальное количество одновременных запросов для каждого уровня
             default_timeout_sec: таймаут ответа (задержавшиеся ответы не обрабатываются)
         """
-        if start_url in self._parsers:
+        if start_url in self._status_store:
             return False
         # Подготовка Парсера
         parser: Parser = Parser(
             queue=self._queue,
             start_url=start_url,
+            status_store=self._status_store,
             max_depth=max_depth,
             max_concurrent=max_concurrent,
             default_timeout_sec=default_timeout_sec,
         )
-        # Обогащение health_check'а сервиса деталями о состоянии
-        self._parsers.update({
-            start_url: {
-                "max_depth": max_depth,
-                "max_concurrent": max_concurrent,
-                "default_timeout_sec": default_timeout_sec,
-            },
-        })
-        return await parser.start(status_store=self._parsers)
+        # Обогащение состояния задач деталями
+        self._status_store[start_url] = parser
+        return await parser.start()
