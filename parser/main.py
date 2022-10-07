@@ -62,7 +62,7 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.put(path="/init_parse_in_background",
     responses={
-        status.HTTP_200_CREATED: {
+        status.HTTP_200_OK: {
             "description": "Запуск процесса произведен успешно",
             "model": StartSuccessModel,
         },
