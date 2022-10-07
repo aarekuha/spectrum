@@ -59,21 +59,21 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
         )
 
 
-@app.get(path="/parse",
+@app.put(path="/init_parse_in_background",
     responses={
         200: {
-            "description": "Запуск процесса произведен успешно.",
+            "description": "Запуск процесса произведен успешно",
             "model": StartSuccessModel,
         },
         400: {
-            "description": "Ресурс недоступен",
+            "description": "Указанный URL недоступен",
             "model": StartFailedModel,
         },
     },
-    summary="Запуск процесса",
+    summary="Запуск процесса фоновой задачей",
     dependencies=[Depends(basic_auth)],
 )
-async def start_parse_process(
+async def init_parse_in_background(
     start_url: str = Query(
         description="Стартовый адрес",
         default="https://habr.com/ru/post/420129/"
