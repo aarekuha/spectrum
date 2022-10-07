@@ -123,7 +123,7 @@ class Parser():
         if len(self._url_domain) > 64:
             raise Exception("Domain name too long")
         async with aiohttp.ClientSession(timeout=self._session_timeout) as session:
-            await asyncio.gather(self._fetch(session=session, url=self._url_start, current_depth=0))
+            await asyncio.create_task(self._fetch(session=session, url=self._url_start, current_depth=0))
         # Очистка информации о состоянии
         del status_store[self._url_start]
         self.logger.info(f"Completed: {self._url_start}...")
@@ -143,6 +143,6 @@ class Parser():
                 return False
         self.logger.info(f"Started: {self._url_start}...")
         # Запуск фонового процесса обработки
-        asyncio.gather(self._process(status_store=status_store))
+        asyncio.create_task(self._process(status_store=status_store))
         # Уведомление об успехе старта
         return True

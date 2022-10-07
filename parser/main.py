@@ -113,7 +113,7 @@ async def start_parse_process(
 
 @app.on_event("startup")
 async def startup():
-    asyncio.gather(services.database.start_listener())
+    asyncio.create_task(services.database.start_listener())
 
 
 @app.on_event("shutdown")
