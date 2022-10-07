@@ -10,6 +10,8 @@ class Config():
 
     LOG_FORMAT = "%(asctime)s [%(name)s:%(lineno)s] [%(levelname)s]: %(message)s"
 
+    MAX_CONCURRENT_PROCESSES = 2
+
     AUTH_USERNAME = "admin"
     AUTH_PASSWORD = "pwd"
 

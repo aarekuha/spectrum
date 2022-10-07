@@ -12,6 +12,7 @@ from fastapi.security import HTTPBasicCredentials
 from fastapi.responses import JSONResponse
 
 from models import StartSuccessModel
+from models import StartLimitedModel
 from models import StartFailedModel
 from models import CancelSuccessModel
 from models import CancelFailedModel
@@ -61,13 +62,20 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.put(path="/init_parse_in_background",
     responses={
-        200: {
+        status.HTTP_200_CREATED: {
             "description": "Запуск процесса произведен успешно",
             "model": StartSuccessModel,
         },
-        400: {
+        status.HTTP_400_BAD_REQUEST: {
             "description": "Указанный URL недоступен",
             "model": StartFailedModel,
+        },
+        status.HTTP_409_CONFLICT: {
+            "description": "Достигнут предел одновременных задач",
+            "model": StartLimitedModel,
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Переданы неправильные аргументы",
         },
     },
     summary="Запуск процесса фоновой задачей",
@@ -76,19 +84,26 @@ def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
 async def init_parse_in_background(
     start_url: str = Query(
         description="Стартовый адрес",
-        default="https://habr.com/ru/post/420129/"
+        default="https://habr.com/ru/post/420129/",
+        max_length=250,  # Ограничение количества знаков
     ),
     max_depth: int = Query(
         description="Максимальная глубина обхода ссылок",
         default=1,
+        gt=0,  # Минимальное значение
+        lt=5,  # Маскимальное значение
     ),
     max_concurrent: int = Query(
         description="Максимальное количество одновременных запросов",
-        default=1
+        default=1,
+        gt=0,  # Минимальное значение
+        lt=30,  # Маскимальное значение
     ),
     default_timeout_sec: int = Query(
         description="Максимальный таймаут ожидания ответа каждого запроса",
-        default=10
+        default=10,
+        gt=0.1,  # Минимальное значение
+        lt=60,  # Маскимальное значение
     ),
 ):
     """
@@ -96,6 +111,12 @@ async def init_parse_in_background(
         Сбор производится асинхронно. Состояние запущенных процессов доступно
         [по ссылке /](/)
     """
+    if services.parser_service.is_busy():
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=StartLimitedModel().dict(),
+        )
+
     if await services.parser_service.parse_site(
         start_url=start_url,
         max_depth=max_depth,
@@ -115,11 +136,11 @@ async def init_parse_in_background(
 
 @app.patch(path="/cancel",
     responses={
-        200: {
+        status.HTTP_200_OK: {
             "description": "Задача на сбор остановлена",
             "model": CancelSuccessModel,
         },
-        400: {
+        status.HTTP_400_BAD_REQUEST: {
             "description": "Задача с указанным стартовым URL не найдена",
             "model": CancelFailedModel,
         },
@@ -130,15 +151,22 @@ async def init_parse_in_background(
 async def cancel_parse_process(
     start_url: str = Query(
         description="Стартовый адрес",
-        default="https://habr.com/ru/post/420129/"
+        default="https://habr.com/ru/post/420129/",
+        max_length=250,  # Ограничение количества знаков
     ),
 ) -> JSONResponse:
     """ Останов запущенного процесса путём указания стартового URL """
     if not services.parser_service.is_url_processing(start_url):
-        return JSONResponse(status_code=400, content=CancelFailedModel().dict())
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=CancelFailedModel().dict()
+        )
 
     services.parser_service.cancel_by_url(start_url=start_url)
-    return JSONResponse(status_code=200, content=CancelSuccessModel().dict())
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=CancelSuccessModel().dict()
+    )
 
 
 @app.on_event("startup")

@@ -6,11 +6,13 @@ from modules import Parser
 class ParserService(ServiceBase):
     _queue: Queue
     _status_store: dict[str, Parser]
+    _limit_concurrent_processes: int
 
-    def __init__(self, queue: Queue):
+    def __init__(self, queue: Queue, limit_concurrent_processes: int):
         super().__init__()
         self._status_store = {}
         self._queue = queue
+        self._limit_concurrent_processes = limit_concurrent_processes
 
     def is_url_processing(self, start_url: str) -> bool:
         """ Поиск запущенного процесса сбора данных по URL """
@@ -19,6 +21,9 @@ class ParserService(ServiceBase):
     def cancel_by_url(self, start_url: str) -> None:
         """ Останов задачи по стартовому URL """
         self._status_store[start_url].cancel()
+
+    def is_busy(self) -> bool:
+        return len(self._status_store) > self._limit_concurrent_processes
 
     async def parse_site(
         self,

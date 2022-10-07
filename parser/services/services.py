@@ -13,7 +13,10 @@ class Services:
 
     def __init__(self, config: Config) -> None:
         self.queue = Queue()
-        self.parser_service = ParserService(queue=self.queue)
+        self.parser_service = ParserService(
+            queue=self.queue,
+            limit_concurrent_processes=config.MAX_CONCURRENT_PROCESSES,
+        )
         self.database = Database(
             host=config.DB_HOSTNAME,
             port=int(config.DB_PORT),
